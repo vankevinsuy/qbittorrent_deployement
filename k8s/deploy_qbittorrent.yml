@@ -1,0 +1,177 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: qbitorrent
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: qbitorrent-pv-nfs-config   # < name of the persisant volume ("pv") in kubenetes
+  namespace: qbitorrent            # < namespace where place the pv
+spec:
+  storageClassName: ""
+  capacity:
+    storage: 1Gi                   # < max. size we reserve for the pv
+  accessModes:
+    - ReadWriteMany                # < Multiple pods can write to storage 
+  persistentVolumeReclaimPolicy: Retain # < The persistent volume can reclaimed 
+  hostPath:
+    path: /mnt/hdd2T/qbitorrent/config            # < Name of your NFS share with subfolder /mnt/hdd2T/qbitorrent/
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: qbitorrent-pv-nfs-download
+  namespace: qbitorrent
+spec:
+  storageClassName: ""
+  capacity:
+    storage: 30Gi                   # < max. size we reserve for the pv. A bigger value than the configdata
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /mnt/hdd2T/qbitorrent/downloads
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qbitorrent-pvc-config   # < name of the persistant volume claim ("pvc'")
+  namespace: qbitorrent         # < namespace where place the pvc
+spec:
+  storageClassName: ""
+  volumeName: qbitorrent-pv-nfs-config  # < the pv it will "claim" to storage. Created in the previous yaml.
+  accessModes:
+    - ReadWriteMany             # < Multiple pods can write to storage. Same value as pv
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 1Gi              # < How much data can the pvc claim from pv
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qbitorrent-pvc-download
+  namespace: qbitorrent
+spec:
+  storageClassName: ""
+  volumeName: qbitorrent-pv-nfs-download
+  accessModes:
+    - ReadWriteMany
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 30Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: qbitorrent
+  name: qbitorrent
+  namespace: qbitorrent
+spec:
+  replicas: 1
+  revisionHistoryLimit: 0
+  selector:
+    matchLabels:
+      app: qbitorrent
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: qbitorrent
+    spec:
+      volumes:
+      - name: nfs-qbitorrent-config
+        persistentVolumeClaim:
+          claimName: qbitorrent-pvc-config
+      - name: nfs-download
+        persistentVolumeClaim:
+          claimName: qbitorrent-pvc-download
+      containers:
+      - env:
+        - name: PGID
+          value: "1000"    # < ASCII code for '100'
+        - name: PUID
+          value: "1000" # < ACII code for '1035'
+        - name: WEBUI_PORT
+          value: "8090"
+        - name: TORRENTING_PORT
+          value: "6881"
+        - name: TZ
+          value: US/Eastern  # < Timezone
+        image: lscr.io/linuxserver/qbittorrent:latest
+        imagePullPolicy: Always
+        name: qbitorrent
+        ports:
+        - containerPort: 8090
+          protocol: TCP
+        - containerPort: 6881
+          protocol: UDP
+        - containerPort: 6881
+          protocol: TCP
+        volumeMounts:            # < the volume mount in the container. Look at the relation volumelabel->pvc->pv
+        - mountPath: /config     # < mount location in the container
+          name: nfs-qbitorrent-config  # < volumelabel configured earlier in the yaml file
+        - mountPath: /downloads
+          name: nfs-download 
+      restartPolicy: Always
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: qbitorrent-svc              # < name of the service
+  namespace: qbitorrent       # < namespace where to place service
+  annotations:
+    metallb.universe.tf/allow-shared-ip: qbitorrent  # < annotation name to combine the Service IP, make sure it's same name as in the service UDP yaml
+spec:
+  selector:
+    app: qbitorrent           # < reference to the deployment (connects the service with the deployment)
+  ports:                      
+  - port: 8090               # < port to open on the outside on the server
+    name: webui
+    targetPort: 8090         # < targetport. port on the pod to passthrough
+    protocol: TCP
+  - port: 6881               # < port to open on the outside on the server
+    name: torrent-udp
+    targetPort: 6881         # < targetport. port on the pod to passthrough
+    protocol: UDP
+  - port: 6881               # < port to open on the outside on the server
+    name: torrent-tcp
+    targetPort: 6881         # < targetport. port on the pod to passthrough
+    protocol: TCP
+  type: LoadBalancer
+---  
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: qbitorrent            # < name of ingress entry
+  namespace: qbitorrent       # < namespace where place the ingress enty
+
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"  # < communicate in https with the backend (service/pod)
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"     # < use letsencrypt-prod application in kubernetes to generate ssl certificate
+    nginx.ingress.kubernetes.io/app-root: /            # < the root directory of the plex webserver
+    nginx.ingress.kubernetes.io/rewrite-target: /qbitorrent
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: snoozyhomelab.com
+    http:
+      paths:
+      - path: /qbitorrent
+        pathType: Prefix
+        backend:
+          service:
+            name: qbitorrent-svc
+            port:
+              number: 8090
+  tls: # < placing a host in the TLS config will indicate a cert should be created
+  - hosts:
+    - snoozyhomelab.com
+    secretName: snoozyhomelab.com-tls # < cert-manager will store the created certificate in this secret.

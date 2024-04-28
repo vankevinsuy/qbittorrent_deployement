@@ -1,0 +1,7 @@
+.venv
+.vscode
+docker/downloads
+downloads
+k8s/qbitorrent
+*py
+.DS_Store
