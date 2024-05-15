@@ -2,6 +2,8 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: qbitorrent
+  labels:
+    shared-gateway-access: "true"
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -145,33 +147,26 @@ spec:
     name: torrent-tcp
     targetPort: 6881         # < targetport. port on the pod to passthrough
     protocol: TCP
-  type: LoadBalancer
----  
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: qbitorrent            # < name of ingress entry
-  namespace: qbitorrent       # < namespace where place the ingress enty
 
-  annotations:
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"  # < communicate in https with the backend (service/pod)
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"     # < use letsencrypt-prod application in kubernetes to generate ssl certificate
-    nginx.ingress.kubernetes.io/app-root: /            # < the root directory of the plex webserver
-    nginx.ingress.kubernetes.io/rewrite-target: /qbitorrent
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: qbitorrent-route
+  namespace: qbitorrent
 spec:
-  ingressClassName: nginx
+  parentRefs:
+    - name: main-gateway
+      namespace: envoy-gateway-system
+  hostnames:
+    - "qbitorrent.snoozyhomelab.com"
   rules:
-  - host: snoozyhomelab.com
-    http:
-      paths:
-      - path: /qbitorrent
-        pathType: Prefix
-        backend:
-          service:
-            name: qbitorrent-svc
-            port:
-              number: 8090
-  tls: # < placing a host in the TLS config will indicate a cert should be created
-  - hosts:
-    - snoozyhomelab.com
-    secretName: snoozyhomelab.com-tls # < cert-manager will store the created certificate in this secret.
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: qbitorrent-svc
+      kind: Service
+      namespace: qbitorrent
+      port: 8090
