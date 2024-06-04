@@ -3,32 +3,39 @@ kind: Namespace
 metadata:
   name: qbitorrent
   labels:
+    app.kubernetes.io/name: qbitorrent
     shared-gateway-access: "true"
 ---
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: qbitorrent-pv-nfs-config   # < name of the persisant volume ("pv") in kubenetes
-  namespace: qbitorrent            # < namespace where place the pv
+  name: qbitorrent-pv-nfs-config
+  namespace: qbitorrent
+  labels:
+    app.kubernetes.io/name: qbitorrent
+    app.kubernetes.io/component: config
 spec:
   storageClassName: ""
   capacity:
-    storage: 1Gi                   # < max. size we reserve for the pv
+    storage: 1Gi
   accessModes:
-    - ReadWriteMany                # < Multiple pods can write to storage 
-  persistentVolumeReclaimPolicy: Retain # < The persistent volume can reclaimed 
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
   hostPath:
-    path: /mnt/hdd2T/qbitorrent/config            # < Name of your NFS share with subfolder /mnt/hdd2T/qbitorrent/
+    path: /mnt/hdd2T/qbitorrent/config
 ---
 apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: qbitorrent-pv-nfs-download
   namespace: qbitorrent
+  labels:
+    app.kubernetes.io/name: qbitorrent
+    app.kubernetes.io/component: downloads
 spec:
   storageClassName: ""
   capacity:
-    storage: 30Gi                   # < max. size we reserve for the pv. A bigger value than the configdata
+    storage: 10Gi
   accessModes:
     - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
@@ -38,23 +45,29 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: qbitorrent-pvc-config   # < name of the persistant volume claim ("pvc'")
-  namespace: qbitorrent         # < namespace where place the pvc
+  name: qbitorrent-pvc-config
+  namespace: qbitorrent
+  labels:
+    app.kubernetes.io/name: qbitorrent
+    app.kubernetes.io/component: config
 spec:
   storageClassName: ""
-  volumeName: qbitorrent-pv-nfs-config  # < the pv it will "claim" to storage. Created in the previous yaml.
+  volumeName: qbitorrent-pv-nfs-config
   accessModes:
-    - ReadWriteMany             # < Multiple pods can write to storage. Same value as pv
+    - ReadWriteMany
   volumeMode: Filesystem
   resources:
     requests:
-      storage: 1Gi              # < How much data can the pvc claim from pv
+      storage: 1Gi
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: qbitorrent-pvc-download
   namespace: qbitorrent
+  labels:
+    app.kubernetes.io/name: qbitorrent
+    app.kubernetes.io/component: downloads
 spec:
   storageClassName: ""
   volumeName: qbitorrent-pv-nfs-download
@@ -63,97 +76,101 @@ spec:
   volumeMode: Filesystem
   resources:
     requests:
-      storage: 30Gi
+      storage: 10Gi
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  labels:
-    app: qbitorrent
   name: qbitorrent
   namespace: qbitorrent
+  labels:
+    app.kubernetes.io/name: qbitorrent
 spec:
   replicas: 1
-  revisionHistoryLimit: 0
   selector:
     matchLabels:
-      app: qbitorrent
-  strategy:
-    rollingUpdate:
-      maxSurge: 0
-      maxUnavailable: 1
-    type: RollingUpdate
+      app.kubernetes.io/name: qbitorrent
   template:
     metadata:
       labels:
-        app: qbitorrent
+        app.kubernetes.io/name: qbitorrent
     spec:
       volumes:
-      - name: nfs-qbitorrent-config
-        persistentVolumeClaim:
-          claimName: qbitorrent-pvc-config
-      - name: nfs-download
-        persistentVolumeClaim:
-          claimName: qbitorrent-pvc-download
+        - name: config
+          persistentVolumeClaim:
+            claimName: qbitorrent-pvc-config
+        - name: downloads
+          persistentVolumeClaim:
+            claimName: qbitorrent-pvc-download
       containers:
-      - env:
-        - name: PGID
-          value: "1000"    # < ASCII code for '100'
-        - name: PUID
-          value: "1000" # < ACII code for '1035'
-        - name: WEBUI_PORT
-          value: "8090"
-        - name: TORRENTING_PORT
-          value: "6881"
-        - name: TZ
-          value: US/Eastern  # < Timezone
-        image: lscr.io/linuxserver/qbittorrent:latest
-        imagePullPolicy: Always
-        name: qbitorrent
-        ports:
-        - containerPort: 8090
-          protocol: TCP
-        - containerPort: 6881
-          protocol: UDP
-        - containerPort: 6881
-          protocol: TCP
-        volumeMounts:            # < the volume mount in the container. Look at the relation volumelabel->pvc->pv
-        - mountPath: /config     # < mount location in the container
-          name: nfs-qbitorrent-config  # < volumelabel configured earlier in the yaml file
-        - mountPath: /downloads
-          name: nfs-download 
+        - name: qbitorrent
+          image: lscr.io/linuxserver/qbittorrent:latest
+          imagePullPolicy: Always
+          env:
+            - name: PGID
+              value: "1000"
+            - name: PUID
+              value: "1000"
+            - name: WEBUI_PORT
+              value: "8090"
+            - name: TORRENTING_PORT
+              value: "6881"
+            - name: TZ
+              value: US/Eastern
+          ports:
+            - containerPort: 8090
+              protocol: TCP
+            - containerPort: 6881
+              protocol: UDP
+            - containerPort: 6881
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: downloads
+              mountPath: /downloads
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
       restartPolicy: Always
 ---
-kind: Service
 apiVersion: v1
+kind: Service
 metadata:
-  name: qbitorrent-svc              # < name of the service
-  namespace: qbitorrent       # < namespace where to place service
+  name: qbitorrent
+  namespace: qbitorrent
+  labels:
+    app.kubernetes.io/name: qbitorrent
   annotations:
-    metallb.universe.tf/allow-shared-ip: qbitorrent  # < annotation name to combine the Service IP, make sure it's same name as in the service UDP yaml
+    metallb.universe.tf/allow-shared-ip: qbitorrent
 spec:
   selector:
-    app: qbitorrent           # < reference to the deployment (connects the service with the deployment)
-  ports:                      
-  - port: 8090               # < port to open on the outside on the server
-    name: webui
-    targetPort: 8090         # < targetport. port on the pod to passthrough
-    protocol: TCP
-  - port: 6881               # < port to open on the outside on the server
-    name: torrent-udp
-    targetPort: 6881         # < targetport. port on the pod to passthrough
-    protocol: UDP
-  - port: 6881               # < port to open on the outside on the server
-    name: torrent-tcp
-    targetPort: 6881         # < targetport. port on the pod to passthrough
-    protocol: TCP
-
+    app.kubernetes.io/name: qbitorrent
+  ports:
+    - port: 8090
+      name: webui
+      targetPort: 8090
+      protocol: TCP
+    - port: 6881
+      name: torrent-udp
+      targetPort: 6881
+      protocol: UDP
+    - port: 6881
+      name: torrent-tcp
+      targetPort: 6881
+      protocol: TCP
 ---
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: HTTPRoute
 metadata:
-  name: qbitorrent-route
+  name: qbitorrent
   namespace: qbitorrent
+  labels:
+    app.kubernetes.io/name: qbitorrent
 spec:
   parentRefs:
     - name: main-gateway
@@ -161,12 +178,12 @@ spec:
   hostnames:
     - "qbitorrent.snoozyhomelab.com"
   rules:
-  - matches:
-    - path:
-        type: PathPrefix
-        value: /
-    backendRefs:
-    - name: qbitorrent-svc
-      kind: Service
-      namespace: qbitorrent
-      port: 8090
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: qbitorrent
+          kind: Service
+          namespace: qbitorrent
+          port: 8090
