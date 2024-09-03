@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: qbitorrent
+  labels:
+    app.kubernetes.io/name: qbitorrent
+    shared-gateway-access: "true"
