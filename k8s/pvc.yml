@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qbitorrent-pvc-config
+  namespace: qbitorrent
+  labels:
+    app.kubernetes.io/name: qbitorrent
+    app.kubernetes.io/component: config
+spec:
+  storageClassName: ""
+  volumeName: qbitorrent-pv-nfs-config
+  accessModes:
+    - ReadWriteMany
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qbitorrent-pvc-download
+  namespace: qbitorrent
+  labels:
+    app.kubernetes.io/name: qbitorrent
+    app.kubernetes.io/component: downloads
+spec:
+  storageClassName: ""
+  volumeName: qbitorrent-pv-nfs-download
+  accessModes:
+    - ReadWriteMany
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 10Gi
