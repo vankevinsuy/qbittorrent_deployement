@@ -7,11 +7,9 @@ metadata:
     app.kubernetes.io/name: qbitorrent
     app.kubernetes.io/component: config
 spec:
-  storageClassName: ""
-  volumeName: qbitorrent-pv-nfs-config
+  storageClassName: zimablade-nfs
   accessModes:
     - ReadWriteMany
-  volumeMode: Filesystem
   resources:
     requests:
       storage: 1Gi
@@ -25,11 +23,9 @@ metadata:
     app.kubernetes.io/name: qbitorrent
     app.kubernetes.io/component: downloads
 spec:
-  storageClassName: ""
-  volumeName: qbitorrent-pv-nfs-download
+  storageClassName: zimablade-nfs
   accessModes:
     - ReadWriteMany
-  volumeMode: Filesystem
   resources:
     requests:
-      storage: 10Gi
+      storage: 20Gi
